@@ -2,7 +2,7 @@ require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const bodyParser = require("body-parser");
 
 const app = express();
@@ -12,13 +12,12 @@ const PORT = process.env.BACK_END_SERVER_PORT;
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN,
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "PUT"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
 app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
 
 const uri = process.env.MONGODB_URI;
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -32,7 +31,7 @@ const client = new MongoClient(uri, {
 
 async function connectToMongoDB() {
   try {
-    // Connect the client to the server	(optional starting in v4.7)
+    // Connect the client to the server (optional starting in v4.7)
     await client.connect();
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
@@ -62,28 +61,76 @@ connectToMongoDB().then(() => {
   });
 });
 
-app.get("/testAPI", (req, res) => {
-  const data = { message: "Hello, World!" };
-  res.json(data);
+// Retrieve data from the collection
+// GET all the user's playlists
+app.get("/playlists", async (req, res) => {
+  try {
+    const db = client.db(process.env.MONGODB_DB_NAME);
+    const collection = db.collection(process.env.MONGODB_COLLECTION_NAME);
+
+    const result = await collection.find({}).toArray();
+    console.log("user playlists", result);
+    res.status(200).json(result);
+  } catch (error) {
+    console.error("Failed to retrieve data:", error);
+    res.status(500).json({ error: "Failed to retrieve data" });
+  }
 });
+// GET a specific playlist songs
+app.get("/playlist/:id", async (req, res) => {
+  try {
+    const id = req.params.id; // Accessing the 'id' parameter from the URL
 
-app.post("/saveData", (req, res) => {
-  const data = req.body; // Assuming the data is sent in the request body
-  console.log(req.body);
-  // Access the MongoDB database using the connected client
-  const db = client.db(process.env.MONGODB_DB_NAME);
-  const collection = db.collection(process.env.MONGODB_COLLECTION_NAME);
+    const db = client.db(process.env.MONGODB_DB_NAME);
+    const collection = db.collection(process.env.MONGODB_COLLECTION_NAME);
 
-  // Insert the data into the collection
-  collection.insertOne(data, (err, result) => {
-    if (err) {
-      console.error("Failed to save data:", err);
-      res.status(500).json({ error: "Failed to save data" });
+    // Query the collection to find a document with the specified 'id'
+    const playlist = await collection.findOne({ _id: ObjectId(id) });
+
+    if (playlist) {
+      res.json(playlist);
     } else {
-      console.log("Data saved successfully");
-      res.status(200).json({ message: "Data saved successfully" });
+      res.status(404).send("Playlist not found");
     }
-  });
+  } catch (error) {
+    console.error("Failed to fetch playlist:", error);
+    res.status(500).send("An error occurred");
+  }
+});
+// POST a new user playlist
+app.post("/playlist", async (req, res) => {
+  try {
+    const data = req.body; // Assuming the data is sent in the request body
+
+    const db = client.db(process.env.MONGODB_DB_NAME);
+    const collection = db.collection(process.env.MONGODB_COLLECTION_NAME);
+
+    const result = await collection.insertOne(data);
+    res.status(200).json({ message: "Data saved successfully" });
+    console.log("Data saved successfully");
+  } catch (error) {
+    console.error("Failed to save data:", error);
+    res.status(500).json({ error: "Failed to save data" });
+  }
+});
+// PUT a new song to a specific playlist
+app.put("/playlist/:id", async (req, res) => {
+  try {
+    const id = req.params.id; // Accessing the 'id' parameter from the URL
+
+    const data = req.body; // Assuming the data is sent in the request body
+
+    const db = client.db(process.env.MONGODB_DB_NAME);
+    const collection = db.collection(process.env.MONGODB_COLLECTION_NAME);
+
+    const result = await collection.updateOne(
+      { _id: new ObjectId(id) },
+      { $push: { songs: data } }
+    );
+    console.log("Array field updated successfully");
+  } catch (error) {
+    console.error("Failed to update array field:", error);
+  }
 });
 
 // Handle server shutdown gracefully
