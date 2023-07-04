@@ -2,13 +2,13 @@ require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
-const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const { MongoClient, ObjectId } = require("mongodb");
 const bodyParser = require("body-parser");
+const WebSocket = require("ws");
 
 const app = express();
 const PORT = process.env.BACK_END_SERVER_PORT;
 
-// Enable CORS middleware
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN,
@@ -16,31 +16,23 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
-
 app.use(bodyParser.json());
 
 const uri = process.env.MONGODB_URI;
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
-const client = new MongoClient(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  },
-});
+const dbName = process.env.MONGODB_DB_NAME;
+const collectionName = process.env.MONGODB_COLLECTION_NAME;
+
+const client = new MongoClient(uri);
+
+let wsServer;
 
 async function connectToMongoDB() {
   try {
-    // Connect the client to the server (optional starting in v4.7)
     await client.connect();
-    // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    console.log("Connected to MongoDB");
   } catch (error) {
     console.error("Failed to connect to MongoDB:", error);
-    process.exit(1); // Exit the process with a non-zero status code
+    process.exit(1);
   }
 }
 
@@ -53,39 +45,50 @@ async function disconnectFromMongoDB() {
   }
 }
 
-// Connect to MongoDB
 connectToMongoDB().then(() => {
-  // Start the server after successful connection to MongoDB
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
+  });
+
+  wsServer = new WebSocket.Server({ server });
+
+  wsServer.on("connection", (ws) => {
+    console.log("WebSocket connection established");
+
+    // Example: Handling incoming WebSocket messages
+    ws.on("message", (message) => {
+      console.log("Received WebSocket message:", message);
+
+      // Example: Parsing and processing the received WebSocket message
+      const parsedMessage = JSON.parse(message);
+      if (parsedMessage.type === "userAction") {
+        console.log("Received a user action:", parsedMessage.action);
+      }
+    });
+
+    ws.on("close", () => {
+      console.log("WebSocket connection closed");
+    });
   });
 });
 
-// Retrieve data from the collection
-// GET all the user's playlists
 app.get("/playlists", async (req, res) => {
   try {
-    const db = client.db(process.env.MONGODB_DB_NAME);
-    const collection = db.collection(process.env.MONGODB_COLLECTION_NAME);
-
-    const result = await collection.find({}).toArray();
-    console.log("user playlists", result);
-    res.status(200).json(result);
+    const collection = client.db(dbName).collection(collectionName);
+    const playlists = await collection.find({}).toArray();
+    console.log("User playlists:", playlists);
+    res.status(200).json(playlists);
   } catch (error) {
     console.error("Failed to retrieve data:", error);
     res.status(500).json({ error: "Failed to retrieve data" });
   }
 });
-// GET a specific playlist songs
+
 app.get("/playlist/:id", async (req, res) => {
   try {
-    const id = req.params.id; // Accessing the 'id' parameter from the URL
-
-    const db = client.db(process.env.MONGODB_DB_NAME);
-    const collection = db.collection(process.env.MONGODB_COLLECTION_NAME);
-
-    // Query the collection to find a document with the specified 'id'
-    const playlist = await collection.findOne({ _id: ObjectId(id) });
+    const id = req.params.id;
+    const collection = client.db(dbName).collection(collectionName);
+    const playlist = await collection.findOne({ _id: new ObjectId(id) });
 
     if (playlist) {
       res.json(playlist);
@@ -97,45 +100,63 @@ app.get("/playlist/:id", async (req, res) => {
     res.status(500).send("An error occurred");
   }
 });
-// POST a new user playlist
+
 app.post("/playlist", async (req, res) => {
   try {
-    const data = req.body; // Assuming the data is sent in the request body
-
-    const db = client.db(process.env.MONGODB_DB_NAME);
-    const collection = db.collection(process.env.MONGODB_COLLECTION_NAME);
-
-    const result = await collection.insertOne(data);
+    const data = req.body;
+    const collection = client.db(dbName).collection(collectionName);
+    await collection.insertOne(data);
     res.status(200).json({ message: "Data saved successfully" });
-    console.log("Data saved successfully");
+    console.log("Data saved successfully", data);
+
+    // Example: Sending a WebSocket message to notify clients
+    const notificationMessage = JSON.stringify({
+      type: "notification",
+      content: "A new playlist has been created",
+    });
+    wsServer.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(notificationMessage);
+      }
+    });
   } catch (error) {
     console.error("Failed to save data:", error);
     res.status(500).json({ error: "Failed to save data" });
+  } finally {
+    console.log("Request completed");
   }
 });
-// PUT a new song to a specific playlist
+
 app.put("/playlist/:id", async (req, res) => {
   try {
-    const id = req.params.id; // Accessing the 'id' parameter from the URL
-
-    const data = req.body; // Assuming the data is sent in the request body
-
-    const db = client.db(process.env.MONGODB_DB_NAME);
-    const collection = db.collection(process.env.MONGODB_COLLECTION_NAME);
-
-    const result = await collection.updateOne(
+    const id = req.params.id;
+    const data = req.body;
+    const collection = client.db(dbName).collection(collectionName);
+    await collection.updateOne(
       { _id: new ObjectId(id) },
       { $push: { songs: data } }
     );
     console.log("Array field updated successfully");
+    res.sendStatus(200);
+
+    // Example: Sending a WebSocket message to notify clients
+    const notificationMessage = JSON.stringify({
+      type: "notification",
+      content: "A playlist has been updated",
+    });
+    wsServer.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(notificationMessage);
+      }
+    });
   } catch (error) {
     console.error("Failed to update array field:", error);
+    res.sendStatus(500);
   }
 });
 
-// Handle server shutdown gracefully
 process.on("SIGINT", () => {
   disconnectFromMongoDB().then(() => {
-    process.exit(0); // Exit the process with a zero status code
+    process.exit(0);
   });
 });
