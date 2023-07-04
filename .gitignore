@@ -8,6 +8,6 @@ env.bak/
 venv.bak/
 
 node_modules
-functions
+
 # Local Netlify folder
 .netlify
