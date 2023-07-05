@@ -2,10 +2,11 @@ require("dotenv").config({ path: "../.env" });
 const serverless = require("serverless-http");
 const express = require("express");
 const { MongoClient, ObjectId } = require("mongodb");
+const cors = require("cors");
+const bodyParser = require("body-parser");
 
 const app = express();
 const router = express.Router();
-const PORT = process.env.BACK_END_SERVER_PORT || 5000;
 const uri = process.env.MONGODB_URI;
 const dbName = process.env.MONGODB_DB_NAME;
 const collectionName = process.env.MONGODB_COLLECTION_NAME;
@@ -21,6 +22,8 @@ async function connectToMongoDB() {
     process.exit(1);
   }
 }
+// Initialize MongoDB connection
+connectToMongoDB();
 
 async function disconnectFromMongoDB() {
   try {
@@ -34,7 +37,7 @@ async function disconnectFromMongoDB() {
 async function retrievePlaylists() {
   const collection = client.db(dbName).collection(collectionName);
   const playlists = await collection.find({}).toArray();
-  console.log("Retrieved playlists:", playlists);
+  // console.log("Retrieved playlists:", playlists);
   return playlists;
 }
 
@@ -62,6 +65,11 @@ async function updatePlaylist(id, data) {
 // Middleware to parse JSON
 app.use(express.json());
 
+// Apply CORS and body-parser middlewares
+app.use(cors());
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+
 // Routes
 router.get("/", (req, res) => {
   res.send("Hello World!");
@@ -81,7 +89,6 @@ router.get("/playlist/:id", async (req, res) => {
   try {
     const id = req.params.id;
     const playlist = await retrievePlaylist(id);
-
     if (playlist) {
       res.json(playlist);
     } else {
@@ -116,18 +123,18 @@ router.put("/playlist/:id", async (req, res) => {
   }
 });
 
-// Initialize MongoDB connection
-connectToMongoDB();
-
 // Handle SIGINT signal to disconnect from MongoDB
 process.on("SIGINT", () => {
   disconnectFromMongoDB().then(() => {
     process.exit(0);
   });
 });
-
 // Use router middleware
 app.use("/.netlify/functions/api", router);
 
 // Export the app as a serverless function
-module.exports.handler = serverless(app);
+const handler = serverless(app);
+module.exports.handler = async (event, context) => {
+  const result = await handler(event, context);
+  return result;
+};
