@@ -61,6 +61,19 @@ async function updatePlaylist(id, data) {
   );
   console.log("Array field updated successfully");
 }
+async function deletePlaylist(id) {
+  const collection = client.db(dbName).collection(collectionName);
+  await collection.deleteOne({ _id: new ObjectId(id) });
+  console.log("Document deleted successfully");
+}
+async function deleteSong(id, songId) {
+  const collection = client.db(dbName).collection(collectionName);
+  await collection.updateOne(
+    { _id: new ObjectId(id) },
+    { $pull: { songs: { id: songId } } }
+  );
+  console.log("Song deleted successfully");
+}
 
 // Middleware to parse JSON
 app.use(express.json());
@@ -119,6 +132,31 @@ router.put("/playlist/:id", async (req, res) => {
     res.sendStatus(200);
   } catch (error) {
     console.error("Failed to update array field:", error);
+    res.sendStatus(500);
+  }
+});
+
+router.delete("/playlist/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    await deletePlaylist(id);
+    res.sendStatus(200);
+  } catch (error) {
+    console.error("Failed to delete document:", error);
+    res.sendStatus(500);
+  }
+});
+
+router.delete("/playlist/:id/:songId", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const songId = req.params.songId;
+    console.log(songId);
+    if (!id || !songId) return res.sendStatus(400);
+    await deleteSong(id, songId);
+    res.sendStatus(200);
+  } catch (error) {
+    console.error("Failed to delete song:", error);
     res.sendStatus(500);
   }
 });
