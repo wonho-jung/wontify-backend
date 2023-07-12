@@ -84,9 +84,6 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Routes
-router.get("/", (req, res) => {
-  res.send("Hello World!");
-});
 
 router.get("/playlists", async (req, res) => {
   try {
