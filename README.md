@@ -11,13 +11,13 @@ yarn install
 ```
 
 ### set .env
-
+```bash
 MONGODB_URL = "Your MongoDB URL"
 MONGODB_DB_NAME = "Your MongoDB Name"
 MONGODB_COLLECTION_NAME = "Your MongoDB collection name"
 MONGODB_SERVER_USER = "Your MongoDB server user"
 MONGODB_SERVER_PASSWORD = "Your MongoDB server password"
-
+```
 
 
 ### How to Start
